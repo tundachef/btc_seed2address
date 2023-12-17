@@ -1,9 +1,11 @@
-const bip39 = require('bip39');
-const bitcoin = require('bitcoinjs-lib');
-const axios = require('axios');
-const wordlist = require('./wordlist');
+const bip39 = require("bip39");
+const bitcoin = require("bitcoinjs-lib");
+const HDKey = require("hdkey");
+const CoinKey = require("coinkey");
+const axios = require("axios");
 
 // Load all the possible words from BIP39
+const wordlist = bip39.wordlists.english;
 
 let BITCOIN_API_URL = 'https://blockstream.info/api/address/';
 
@@ -32,21 +34,25 @@ async function checkBalanceAndPrint(address) {
 
 async function main() {
   while (true) {
-    const randomMnemonic = await generateRandomMnemonic();
-    // console.log(randomMnemonic);
-    const address = addressFromMnemonic(randomMnemonic);
-    await checkBalanceAndPrint(address);
-    // Adjust the delay as needed
-    // await new Promise(resolve => setTimeout(resolve, 2)); // Delay for 5 seconds
+    try {
+      const randomMnemonic = await generateRandomMnemonic();
+      console.log('Generated Mnemonic:', randomMnemonic);
+      
+      const seed = bip39.mnemonicToSeedSync(randomMnemonic);
+      const hdKey = HDKey.fromMasterSeed(Buffer.from(seed, "hex"));
+      const path = "m/44'/0'/0'/0/0";
+      const child = hdKey.derive(path);
+      const coinKey = new CoinKey(child.privateKey, bitcoin.networks.bitcoin);
+      const address = coinKey.publicAddress;
+
+      await checkBalanceAndPrint(address);
+
+      // Adjust the delay as needed
+      await new Promise(resolve => setTimeout(resolve, 0)); // Delay for 5 seconds
+    } catch (error) {
+      console.error('Error generating or processing mnemonic:', error.message);
+    }
   }
-}
-
-function addressFromMnemonic(mnemonic) {
-  const seed = bip39.mnemonicToSeedSync(mnemonic);
-  const node = bitcoin.bip32.fromSeed(seed);
-  const keyPair = bitcoin.ECPair.fromWIF(node.toWIF());
-
-  return bitcoin.payments.p2pkh({ pubkey: keyPair.publicKey }).address;
 }
 
 // Start the program
