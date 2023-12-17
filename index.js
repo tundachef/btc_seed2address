@@ -1,55 +1,44 @@
 const bip39 = require('bip39');
 const bitcoin = require('bitcoinjs-lib');
 const axios = require('axios');
-const yargs = require('yargs');
+const wordlist = require('./wordlist');
 
 // Load all the possible words from BIP39
-const wordlist = bip39.wordlists.english;
 
 let BITCOIN_API_URL = 'https://blockstream.info/api/address/';
 
-async function bruteforceMnemonic(mnemonic) {
-  // Split mnemonic into its words
-  let mnemonicParts = mnemonic.split(" ");
+async function generateRandomMnemonic() {
+  const mnemonic = [];
+  const wordCount = 12;
 
-  // Find all occurrences of 'XXX'
-  let wordsToBrute = identifyBruteforcePositions(mnemonic);
-
-  for (let wordIndex = 0; wordIndex < wordsToBrute.length; wordIndex++) {
-    let wordPosition = wordsToBrute[wordIndex];
-    for (let i = 0; i < wordlist.length; i++) {
-      mnemonicParts[wordPosition] = wordlist[i];
-      let mnemonicTest = mnemonicParts.join(" ");
-
-      if (bip39.validateMnemonic(mnemonicTest)) {
-        // Generate address to test if exists
-        let address = addressFromMnemonic(mnemonicTest);
-
-        // Test if address exists
-        if (await checkExists(address)) {
-          console.log("Found!");
-          console.log('Address: ', address);
-          console.log('Mnemonic: ', mnemonicTest);
-          return;
-        }
-      }
-    }
+  for (let i = 0; i < wordCount; i++) {
+    const randomIndex = Math.floor(Math.random() * wordlist.length);
+    mnemonic.push(wordlist[randomIndex]);
   }
 
-  console.log("Checked all possibilities.");
-
-  return;
+  return mnemonic.join(' ');
 }
 
-async function checkExists(address) {
+async function checkBalanceAndPrint(address) {
   try {
-    console.log("Checking address", address);
-    await axios.get(BITCOIN_API_URL + address);
+    console.log(`Checking balance for address ${address}`);
+    const response = await axios.get(BITCOIN_API_URL + address);
+    const balance = response.data.chain_stats.funded_txo_sum / 100000000; // Convert satoshis to BTC
+    console.log(`Address: ${address}, Balance: ${balance} BTC`);
   } catch (error) {
-    return false;
+    console.error(`Error checking balance for address ${address}: ${error.message}`);
   }
+}
 
-  return true;
+async function main() {
+  while (true) {
+    const randomMnemonic = await generateRandomMnemonic();
+    // console.log(randomMnemonic);
+    const address = addressFromMnemonic(randomMnemonic);
+    await checkBalanceAndPrint(address);
+    // Adjust the delay as needed
+    // await new Promise(resolve => setTimeout(resolve, 2)); // Delay for 5 seconds
+  }
 }
 
 function addressFromMnemonic(mnemonic) {
@@ -60,52 +49,5 @@ function addressFromMnemonic(mnemonic) {
   return bitcoin.payments.p2pkh({ pubkey: keyPair.publicKey }).address;
 }
 
-async function main(mnemonic) {
-  console.log('Start bruteforce...');
-  await bruteforceMnemonic(mnemonic);
-
-  return;
-}
-
-function showHelp() {
-  console.log("Bruteforce an incorrect mnemonic for Bitcoin.");
-  console.log("Provide a mnemonic to brute force:");
-  console.log('$ npm run brute -- --mnemonic="word1 word2 XXX word4 word5"');
-  console.log("The word XXX will be replaced and brute-forced at all positions.");
-}
-
-function identifyBruteforcePositions(mnemonic) {
-  let mnemonicParts = mnemonic.split(" ");
-  let positions = [];
-
-  for (let i = 0; i < mnemonicParts.length; i++) {
-    if (mnemonicParts[i] === 'XXX') {
-      positions.push(i);
-    }
-  }
-
-  if (positions.length === 0) {
-    console.log('Could not find the word "XXX" in the provided mnemonic');
-    console.log('Example:');
-    console.log('$ npm run brute -- --mnemonic="word1 word2 XXX word4 word5"');
-    process.exit();
-  }
-
-  return positions;
-}
-
-// HACK: Add a timeout because sometimes cryptoWaitReady() fails.
-setTimeout(
-  async () => {
-    let mnemonic = yargs.argv.mnemonic;
-
-    if (mnemonic === undefined) {
-      showHelp();
-      process.exit();
-    }
-
-    await main(mnemonic);
-    console.log('Finished.');
-  },
-  1000
-);
+// Start the program
+main();
